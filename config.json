@@ -1,0 +1,34 @@
+{
+    "chrome": {
+        "sourcePath": "C:\\Users\\$env:USERNAME\\AppData\\Local\\Google\\Chrome\\User Data\\",
+        "networkPath": "\\\\192.168.15.204\\pcs\\fileSystem\\userBackup",
+        "ignoredFolders": [
+            "Code Cache",
+            "IndexedDB",
+            "Cache",
+            "GPUCache",
+            "ShaderCache",
+            "Service Worker/CacheStorage"
+        ]
+    },
+    "microsip": {
+        "sourcePath": "C:\\Users\\$env:USERNAME\\AppData\\Roaming\\MicroSIP",
+        "networkPath": "\\\\192.168.15.204\\pcs\\fileSystem\\userBackup",
+        "ignoredFolders": []
+    },
+    "steelseries": {
+        "installerPath": "\\\\192.168.15.204\\pcs\\SteelSeries\\SteelSeriesGG83.1.0Setup.exe",
+        "networkFolder": "\\\\192.168.15.204\\pcs\\SteelSeries\\GG",
+        "destinationFolder": "C:\\ProgramData\\SteelSeries\\GG",
+        "executablePath": "C:\\Program Files\\SteelSeries\\GG\\SteelSeriesGGClient.exe"
+    },
+    "backupSetup": {
+        "sourcePath": "C:\\Users\\$env:USERNAME\\Desktop\\BackupSetup",
+        "networkPath": "\\\\192.168.15.204\\pcs\\fileSystem\\userBackup",
+        "backupSetupPath": "\\\\192.168.15.204\\pcs\\fileSystem\\userBackup\\$env:USERNAME\\BackupSetup"
+    },
+    "inventoryRequest": {
+        "apiUrl": "http://gwinterno.setuptecnologia.com/inventory/api",
+        "method": "check_and_transfer"
+    }
+}
