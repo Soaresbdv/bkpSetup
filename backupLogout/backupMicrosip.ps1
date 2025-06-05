@@ -1,96 +1,62 @@
-# Load the config.json file and convert it to a PowerShell object (specifically for MicroSIP)
-$config = (Get-Content ".\config.json" -Raw | ConvertFrom-Json).microsip
+# backupMicrosip.ps1
 
-# Function to resolve environment variables in paths
+# Carrega o config.json e converte para objeto
+$config = (Get-Content (Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Definition) "..\\config.json") -Raw | ConvertFrom-Json).microsip
+
+# Resolve variáveis de ambiente no caminho
 function Resolve-PathWithVars {
-    param (
-        [string]$Path
-    )
-
-    # Replace environment variables like $env:USERNAME, %USERNAME%, etc.
-    $Path = $ExecutionContext.InvokeCommand.ExpandString($Path)
-    return $Path
+    param ([string]$Path)
+    return $ExecutionContext.InvokeCommand.ExpandString($Path)
 }
 
-# Load configuration variables from config.json and resolve paths
 $sourcePath = Resolve-PathWithVars $config.sourcePath
 $networkPath = Resolve-PathWithVars $config.networkPath
-$ignoredFolders = $config.ignoredFolders
-
-# Retrieve the current user's name
 $username = $env:USERNAME
 
-# Define the user's backup directory path on the network
+# Aqui garantimos que a pasta de destino seja '...\userBackup\<usuario>\microsip'
 $userBackupPath = Join-Path $networkPath $username
+$microsipBackupPath = Join-Path $userBackupPath "microsip"
 
-# Define the MicroSIP backup directory path
-$microSIPBackupPath = Join-Path $userBackupPath "MicroSIP"
-
-# Variable to store files that failed to copy
 $failedCopies = @()
 
-# Create the user backup directory if it doesn't exist
-if (!(Test-Path $userBackupPath)) {
-    New-Item -ItemType Directory -Path $userBackupPath | Out-Null
+# Cria estrutura de destino
+if (!(Test-Path $microsipBackupPath)) {
+    New-Item -ItemType Directory -Path $microsipBackupPath | Out-Null
 }
 
-# Remove the existing "MicroSIP" folder if it exists
-if (Test-Path $microSIPBackupPath) {
-    Remove-Item -Recurse -Force $microSIPBackupPath
-}
-
-# Create a new "MicroSIP" folder
-New-Item -ItemType Directory -Path $microSIPBackupPath | Out-Null
-
-# Recursive function to copy folders while ignoring specified ones
+# Função recursiva para copiar arquivos e pastas
 function Copy-Folder {
     param (
         [string]$Source,
-        [string]$Destination,
-        [string[]]$Ignore
+        [string]$Destination
     )
 
-    # Create the destination directory if it doesn't exist
     if (!(Test-Path $Destination)) {
         New-Item -ItemType Directory -Path $Destination | Out-Null
     }
 
-    # Filter files and folders to be ignored before copying
-    $items = Get-ChildItem -Path $Source -Force -ErrorAction Stop
-
+    $items = Get-ChildItem -Path $Source -Force -ErrorAction SilentlyContinue
     foreach ($item in $items) {
-        $itemName = $item.Name
-
-        if ($item.PSIsContainer) {
-            if ($Ignore -contains $itemName) {
-                Write-Host "Ignoring folder: $itemName" -ForegroundColor Yellow
-                continue
+        $destItemPath = Join-Path $Destination $item.Name
+        try {
+            if ($item.PSIsContainer) {
+                Copy-Folder -Source $item.FullName -Destination $destItemPath
+            } else {
+                Copy-Item -Path $item.FullName -Destination $destItemPath -Force
             }
-
-            # Recursively copy valid folders
-            $subDestination = Join-Path $Destination $itemName
-            Copy-Folder -Source $item.FullName -Destination $subDestination -Ignore $Ignore
-        }
-        else {
-            try {
-                $destinationPath = Join-Path $Destination $itemName
-                Copy-Item -Path $item.FullName -Destination $destinationPath -Force -ErrorAction Stop
-            }
-            catch {
-                $failedCopies += $item.FullName
-            }
+        } catch {
+            $script:failedCopies += $item.FullName
         }
     }
 }
 
-# Execute the copy function
-Copy-Folder -Source $sourcePath -Destination $microSIPBackupPath -Ignore $ignoredFolders
+# Executa o backup
+Copy-Folder -Source $sourcePath -Destination $microsipBackupPath
 
-# Display files that failed to copy, if any
+# Relatório final
 if ($failedCopies.Count -gt 0) {
-    Write-Host "`nFiles not copied:" -ForegroundColor Yellow
-    Write-Host "List:" -ForegroundColor Yellow
+    Write-Host "`nArquivos não copiados:" -ForegroundColor Yellow
     $failedCopies | ForEach-Object { Write-Host $_ }
 } else {
-    Write-Host "Copy completed successfully!" -ForegroundColor Green
+    Write-Host "Backup do MicroSIP concluído com sucesso!" -ForegroundColor Green
 }

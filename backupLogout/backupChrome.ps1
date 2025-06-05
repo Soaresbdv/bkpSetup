@@ -1,61 +1,122 @@
-# Backup Chrome - Atualizado
-# Carrega config
-$config = (Get-Content ".\config.json" -Raw | ConvertFrom-Json).chrome
+# Está tudo liso!
 
+# Carrega o config.json e converte para objeto
+$config = (Get-Content (Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Definition) "..\config.json") -Raw | ConvertFrom-Json).chrome
+
+# Resolve variáveis de ambiente no caminho
 function Resolve-PathWithVars {
     param ([string]$Path)
-    $Path = $ExecutionContext.InvokeCommand.ExpandString($Path)
-    return $Path
+    return $ExecutionContext.InvokeCommand.ExpandString($Path)
 }
 
-$sourcePath = Resolve-PathWithVars $config.sourcePath
+$sourceBase = Resolve-PathWithVars $config.sourcePath
 $networkPath = Resolve-PathWithVars $config.networkPath
 $ignoredFolders = $config.ignoredFolders
-
 $username = $env:USERNAME
 $userBackupPath = Join-Path $networkPath $username
 $chromeBackupPath = Join-Path $userBackupPath "chrome"
+$failedCopies = @()
 
-$global:failedCopies = @()
+# Função para calcular tamanho de pasta
+function Get-FolderSize {
+    param ([string]$Path)
+    try {
+        return (Get-ChildItem -Path $Path -Recurse -Force | Measure-Object -Property Length -Sum).Sum
+    } catch {
+        return 0
+    }
+}
 
-if (!(Test-Path $userBackupPath)) { New-Item -ItemType Directory -Path $userBackupPath | Out-Null }
-if (Test-Path $chromeBackupPath) { Remove-Item -Recurse -Force $chromeBackupPath }
+# Identifica o maior perfil
+$profiles = Get-ChildItem -Path $sourceBase -Directory | Where-Object {
+    $_.Name -match "^Default$|^Profile \d+$"
+}
+
+$largestProfile = $null
+$largestSize = 0
+
+foreach ($profile in $profiles) {
+    $size = Get-FolderSize -Path $profile.FullName
+    if ($size -gt $largestSize) {
+        $largestSize = $size
+        $largestProfile = $profile
+    }
+}
+
+if (-not $largestProfile) {
+    Write-Host "Nenhum perfil encontrado." -ForegroundColor Red
+    exit
+}
+
+Write-Host "Perfil selecionado: $($largestProfile.Name) com $([math]::Round($largestSize / 1MB, 2)) MB" -ForegroundColor Cyan
+$sourcePath = $largestProfile.FullName
+
+# Cria estrutura de destino
+if (!(Test-Path $userBackupPath)) {
+    New-Item -ItemType Directory -Path $userBackupPath | Out-Null
+}
+if (Test-Path $chromeBackupPath) {
+    Remove-Item -Recurse -Force $chromeBackupPath
+}
 New-Item -ItemType Directory -Path $chromeBackupPath | Out-Null
 
+# Nova função para verificar se o caminho deve ser ignorado (subpasta inclusa)
+function ShouldIgnoreRelativePath {
+    param (
+        [string]$FullPath,
+        [string]$BasePath,
+        [string[]]$IgnoreList
+    )
+
+    $relativePath = $FullPath.Substring($BasePath.Length).TrimStart('\\')
+
+    foreach ($ignore in $IgnoreList) {
+        if ($relativePath -replace '/', '\\' -like "*$ignore*") {
+            return $true
+        }
+    }
+    return $false
+}
+
+# Função recursiva para copiar ignorando pastas por caminho
 function Copy-Folder {
-    param ([string]$Source, [string]$Destination, [string[]]$Ignore)
+    param (
+        [string]$Source,
+        [string]$Destination,
+        [string[]]$Ignore
+    )
 
-    if (!(Test-Path $Destination)) { New-Item -ItemType Directory -Path $Destination | Out-Null }
+    if (!(Test-Path $Destination)) {
+        New-Item -ItemType Directory -Path $Destination | Out-Null
+    }
 
-    $items = Get-ChildItem -Path $Source -Force -ErrorAction Stop
+    $items = Get-ChildItem -Path $Source -Force -ErrorAction SilentlyContinue
     foreach ($item in $items) {
-        $relativePath = ($item.FullName -replace [regex]::Escape($Source), "").TrimStart("\")
-        $normalizedPath = $relativePath -replace "\", "/"
-
-        if ($Ignore -contains $normalizedPath -or $Ignore -contains $item.Name) {
-            Write-Host "Ignoring folder: $normalizedPath" -ForegroundColor Yellow
+        if (ShouldIgnoreRelativePath -FullPath $item.FullName -BasePath $sourcePath -Ignore $Ignore) {
+            Write-Host "Ignorando: $($item.FullName)" -ForegroundColor Yellow
             continue
         }
 
-        if ($item.PSIsContainer) {
-            $subDestination = Join-Path $Destination $item.Name
-            Copy-Folder -Source $item.FullName -Destination $subDestination -Ignore $Ignore
-        } else {
-            try {
-                $destinationPath = Join-Path $Destination $item.Name
-                Copy-Item -Path $item.FullName -Destination $destinationPath -Force -ErrorAction Stop
-            } catch {
-                $global:failedCopies += $item.FullName
+        $destItemPath = Join-Path $Destination $item.Name
+        try {
+            if ($item.PSIsContainer) {
+                Copy-Folder -Source $item.FullName -Destination $destItemPath -Ignore $Ignore
+            } else {
+                Copy-Item -Path $item.FullName -Destination $destItemPath -Force
             }
+        } catch {
+            $script:failedCopies += $item.FullName
         }
     }
 }
 
+# Executa o backup
 Copy-Folder -Source $sourcePath -Destination $chromeBackupPath -Ignore $ignoredFolders
 
-if ($global:failedCopies.Count -gt 0) {
-    Write-Host "`nFiles not copied:" -ForegroundColor Yellow
-    $global:failedCopies | ForEach-Object { Write-Host $_ }
+# Relatório final
+if ($failedCopies.Count -gt 0) {
+    Write-Host "`nArquivos não copiados:" -ForegroundColor Yellow
+    $failedCopies | ForEach-Object { Write-Host $_ }
 } else {
-    Write-Host "Copy completed successfully!" -ForegroundColor Green
+    Write-Host "Backup do Chrome concluído com sucesso!" -ForegroundColor Green
 }

@@ -1,35 +1,35 @@
-# Define the paths to the backup scripts located in the "backup" folder
-$chromeBackupScript = ".\backupLogout\backupChrome.ps1"
-$microsipBackupScript = ".\backupLogout\backupMicrosip.ps1"
-$dataBackupScript = ".\backupLogout\backupData.ps1"
+# Caminho da pasta onde está este script (já dentro de backupLogout)
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
 
-# Run Data Backup Script (backupData.ps1)
+# Scripts estão na mesma pasta
+$chromeBackupScript     = Join-Path $scriptDir "backupChrome.ps1"
+$dataBackupScript       = Join-Path $scriptDir "backupData.ps1"
+$microsipBackupScript   = Join-Path $scriptDir "backupMicrosip.ps1"
+
+# Rodar Data Backup
 Write-Host "Running Data Backup Script..." -ForegroundColor Cyan
 try {
     & $dataBackupScript
     Write-Host "Data backup completed successfully!" -ForegroundColor Green
-}
-catch {
+} catch {
     Write-Host "Error running Data backup script: $_" -ForegroundColor Red
 }
 
-# Run Chrome Backup Script (backupChrome.ps1)
+# Rodar Chrome Backup
 Write-Host "Running Chrome Backup Script..." -ForegroundColor Cyan
 try {
     & $chromeBackupScript
     Write-Host "Chrome backup completed successfully!" -ForegroundColor Green
-}
-catch {
+} catch {
     Write-Host "Error running Chrome backup script: $_" -ForegroundColor Red
 }
 
-# Run MicroSIP Backup Script (backupMicrosip.ps1)
+# Rodar MicroSIP Backup
 Write-Host "Running MicroSIP Backup Script..." -ForegroundColor Cyan
 try {
     & $microsipBackupScript
     Write-Host "MicroSIP backup completed successfully!" -ForegroundColor Green
-}
-catch {
+} catch {
     Write-Host "Error running MicroSIP backup script: $_" -ForegroundColor Red
 }
 
