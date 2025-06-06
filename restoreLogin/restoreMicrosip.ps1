@@ -1,58 +1,48 @@
-Write-Host "`n=======================[ RESTORE MICROSIP ]=======================" -ForegroundColor Yellow
+# restoreMicrosip.ps1
 
-# Verifica se está sendo executado como administrador
-if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
-    Write-Host "`n[ INFO ] Reabrindo script com privilégios de administrador..." -ForegroundColor Yellow
-    Start-Process powershell.exe -ArgumentList "-ExecutionPolicy Bypass -File `"$PSCommandPath`"" -Verb RunAs
-    exit
+# Carrega o config.json e converte para objeto Microsip
+$config = (Get-Content (Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Definition) "..\\config.json") -Raw | ConvertFrom-Json).microsip
+
+# Resolve variáveis de ambiente no caminho
+function Resolve-PathWithVars {
+    param ([string]$Path)
+    return $ExecutionContext.InvokeCommand.ExpandString($Path)
 }
 
-# Nome do usuário logado
-$userName = $env:USERNAME
-$userProfile = $env:USERPROFILE
+# Variáveis de caminho
+$username = $env:USERNAME
+$sourceBase = Resolve-PathWithVars $config.networkPath
+$sourcePath = Join-Path (Join-Path $sourceBase $username) "microsip"
+$destinationPath = Resolve-PathWithVars $config.sourcePath
 
-# Caminho do backup no servidor
-$networkBackupPath = "\\192.168.15.204\pcs\fileSystem\userBackup\$userName\MicroSIP"
+Write-Host "Restaurando arquivos do MicroSIP de $sourcePath para $destinationPath" -ForegroundColor Cyan
 
-# Caminho local do MicroSIP
-$localMicroSIPPath = Join-Path $userProfile "AppData\Roaming\MicroSIP"
-
-# Verifica se o backup existe
-if (!(Test-Path $networkBackupPath)) {
-    Write-Host "`n[ ❌ ERROR ] Backup do MicroSIP não encontrado em: $networkBackupPath" -ForegroundColor Red
-    exit
+# Garante que o destino existe
+if (-not (Test-Path $destinationPath)) {
+    New-Item -ItemType Directory -Path $destinationPath -Force | Out-Null
 }
 
-# Encerra o MicroSIP se estiver rodando
-Write-Host "`n[ INFO ] Encerrando processos do MicroSIP..." -ForegroundColor Yellow
-Get-Process -Name "microsip" -ErrorAction SilentlyContinue | Stop-Process -Force
+# Sempre retorna arrays, mesmo que haja um só item
+$filesToRestore = @()
+$filesToRestore += @(Get-ChildItem -Path $sourcePath -Filter *.ini -File -ErrorAction SilentlyContinue)
+$filesToRestore += @(Get-ChildItem -Path $sourcePath -Filter *.edge -File -ErrorAction SilentlyContinue)
 
-# Remove pasta local do MicroSIP (se existir)
-Write-Host "`n[ INFO ] Limpando dados locais do MicroSIP..." -ForegroundColor Cyan
-try {
-    if (Test-Path $localMicroSIPPath) {
-        Remove-Item -Path $localMicroSIPPath -Recurse -Force -ErrorAction Stop
-        Write-Host "[ OK ] Pasta local do MicroSIP removida." -ForegroundColor Green
+$failedCopies = @()
+
+foreach ($file in $filesToRestore) {
+    $destinationFile = Join-Path $destinationPath $file.Name
+    try {
+        Copy-Item -Path $file.FullName -Destination $destinationFile -Force
+        Write-Host "Restaurado: $($file.Name)"
+    } catch {
+        $failedCopies += $file.FullName
     }
-} catch {
-    Write-Host "[ ⚠️ WARNING ] Não foi possível remover completamente: $($_.Exception.Message)" -ForegroundColor Yellow
 }
 
-# Cria pasta de destino se não existir
-if (!(Test-Path $localMicroSIPPath)) {
-    New-Item -ItemType Directory -Path $localMicroSIPPath | Out-Null
+# Resultado final
+if ($failedCopies.Count -gt 0) {
+    Write-Host "`nFalha ao restaurar os seguintes arquivos:" -ForegroundColor Yellow
+    $failedCopies | ForEach-Object { Write-Host $_ }
+} else {
+    Write-Host "`nRestauro do MicroSIP concluído com sucesso!" -ForegroundColor Green
 }
-
-# Copia os dados do backup para o local
-Write-Host "`n[ INFO ] Restaurando dados do MicroSIP..." -ForegroundColor Cyan
-try {
-    Copy-Item -Path "$networkBackupPath\*" -Destination $localMicroSIPPath -Recurse -Force -ErrorAction Stop
-    Write-Host "[ ✅ SUCCESS ] Dados do MicroSIP restaurados com sucesso para: $localMicroSIPPath" -ForegroundColor Green
-} catch {
-    Write-Host "[ ❌ ERROR ] Erro ao copiar os dados: $($_.Exception.Message)" -ForegroundColor Red
-    exit
-}
-
-Write-Host "`n===============================================================================" -ForegroundColor Yellow
-Write-Host "[ ✅ FINALIZADO ] Restore do MicroSIP concluído para: $localMicroSIPPath" -ForegroundColor Green
-Write-Host "===============================================================================" -ForegroundColor Yellow

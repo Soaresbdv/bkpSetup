@@ -1,58 +1,70 @@
-Write-Host "`n=======================[ RESTORE GOOGLE CHROME - CONTEÚDO DE PROFILE ]=======================" -ForegroundColor Yellow
+# restoreChrome.ps1
 
-# Verifica se está sendo executado como administrador
-if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
-    Write-Host "`n[ INFO ] Reabrindo script com privilégios de administrador..." -ForegroundColor Yellow
-    Start-Process powershell.exe -ArgumentList "-ExecutionPolicy Bypass -File `"$PSCommandPath`"" -Verb RunAs
-    exit
+# Carrega config.json
+$config = (Get-Content (Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Definition) "..\\config.json") -Raw | ConvertFrom-Json).chrome
+
+# Resolve variáveis com ambiente
+function Resolve-PathWithVars {
+    param ([string]$Path)
+    return $ExecutionContext.InvokeCommand.ExpandString($Path)
 }
 
-# Nome do usuário logado
-$userName = $env:USERNAME
-$userProfile = $env:USERPROFILE
+# == RESTORE CHROME ==
+$chromeConfig = $config
+$sourcePath = Join-Path (Resolve-PathWithVars $chromeConfig.networkPath) (Join-Path $env:USERNAME "chrome")
+$destinationPath = Resolve-PathWithVars $chromeConfig.sourcePath
+$ignoredFolders = $chromeConfig.ignoredFolders
 
-# Caminho do backup no servidor
-$networkBackupPath = "\\192.168.15.204\pcs\fileSystem\userBackup\$userName\chrome"
+Write-Host "Restaurando dados do Chrome de $sourcePath para $destinationPath" -ForegroundColor Cyan
 
-# Caminho de destino local
-$chromeProfilePath = Join-Path $userProfile "AppData\Local\Google\Chrome\User Data\Profile 1"
-
-# Verifica se o backup existe
-if (!(Test-Path $networkBackupPath)) {
-    Write-Host "`n[ ❌ ERROR ] Backup do Chrome não encontrado em: $networkBackupPath" -ForegroundColor Red
-    exit
-}
-
-# Encerra o Chrome
-Write-Host "`n[ INFO ] Encerrando processos do Google Chrome..." -ForegroundColor Yellow
-Get-Process -Name "chrome" -ErrorAction SilentlyContinue | Stop-Process -Force
-
-# Remove perfil local (se existir)
-Write-Host "`n[ INFO ] Limpando perfil local (Profile 1)..." -ForegroundColor Cyan
-try {
-    if (Test-Path $chromeProfilePath) {
-        Remove-Item -Path $chromeProfilePath -Recurse -Force -ErrorAction Stop
-        Write-Host "[ OK ] Perfil local removido." -ForegroundColor Green
+function ShouldIgnoreRelativePath {
+    param (
+        [string]$FullPath,
+        [string]$BasePath,
+        [string[]]$IgnoreList
+    )
+    $relativePath = $FullPath.Substring($BasePath.Length).TrimStart('\\')
+    foreach ($ignore in $IgnoreList) {
+        if ($relativePath -replace '/', '\\' -like "*$ignore*") {
+            return $true
+        }
     }
-} catch {
-    Write-Host "[ ⚠️ WARNING ] Não foi possível remover completamente: $($_.Exception.Message)" -ForegroundColor Yellow
+    return $false
 }
 
-# Cria pasta de destino se não existir
-if (!(Test-Path $chromeProfilePath)) {
-    New-Item -ItemType Directory -Path $chromeProfilePath | Out-Null
+if (-not (Test-Path $destinationPath)) {
+    New-Item -ItemType Directory -Path $destinationPath -Force | Out-Null
 }
 
-# Copia todo o conteúdo do backup diretamente para a pasta Profile 1
-Write-Host "`n[ INFO ] Restaurando dados do Chrome (conteúdo) para Profile 1..." -ForegroundColor Cyan
-try {
-    Copy-Item -Path "$networkBackupPath\*" -Destination $chromeProfilePath -Recurse -Force -ErrorAction Stop
-    Write-Host "[ ✅ SUCCESS ] Dados restaurados com sucesso para: $chromeProfilePath" -ForegroundColor Green
-} catch {
-    Write-Host "[ ❌ ERROR ] Erro ao copiar os dados: $($_.Exception.Message)" -ForegroundColor Red
-    exit
+$failedCopies = @()
+$items = Get-ChildItem -Path $sourcePath -Recurse -Force -ErrorAction SilentlyContinue
+foreach ($item in $items) {
+    if (ShouldIgnoreRelativePath -FullPath $item.FullName -BasePath $sourcePath -IgnoreList $ignoredFolders) {
+        Write-Host "Ignorando: $($item.FullName)" -ForegroundColor Yellow
+        continue
+    }
+
+    $target = $item.FullName.Replace($sourcePath, $destinationPath)
+    try {
+        if ($item.PSIsContainer) {
+            if (-not (Test-Path $target)) {
+                New-Item -ItemType Directory -Path $target -Force | Out-Null
+            }
+        } else {
+            $parent = Split-Path $target -Parent
+            if (-not (Test-Path $parent)) {
+                New-Item -ItemType Directory -Path $parent -Force | Out-Null
+            }
+            Copy-Item -Path $item.FullName -Destination $target -Force
+        }
+    } catch {
+        $failedCopies += $item.FullName
+    }
 }
 
-Write-Host "`n===============================================================================" -ForegroundColor Yellow
-Write-Host "[ ✅ FINALIZADO ] Restore do Chrome concluído para: $chromeProfilePath" -ForegroundColor Green
-Write-Host "===============================================================================" -ForegroundColor Yellow
+if ($failedCopies.Count -gt 0) {
+    Write-Host "`nFalha ao restaurar os seguintes arquivos do Chrome:" -ForegroundColor Yellow
+    $failedCopies | ForEach-Object { Write-Host $_ }
+} else {
+    Write-Host "`nRestauro do Chrome concluído com sucesso!" -ForegroundColor Green
+}
