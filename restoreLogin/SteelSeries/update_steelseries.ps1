@@ -1,64 +1,74 @@
-Write-Host "`n=======================[ Atualização SteelSeries GG - Configurações ]=======================" -ForegroundColor Yellow
+Write-Host "`n=======================[ SteelSeries GG Update Process ]=======================" -ForegroundColor Yellow
 
-# Verificar se está rodando como administrador
-if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
-    Write-Host "`n[ INFO ] Executando como administrador..." -ForegroundColor Yellow
-    Start-Process powershell.exe -ArgumentList "-ExecutionPolicy Bypass -File `"$PSCommandPath`"" -Verb RunAs
+# Close SteelSeries GG if it's running
+Write-Host "`n[ INFO ] Closing SteelSeries GG if running..." -ForegroundColor Cyan
+
+# Tentando fechar todos os processos relacionados ao SteelSeries GG
+$processes = Get-Process | Where-Object { $_.ProcessName -like "SteelSeries*" }
+
+if ($processes) {
+    foreach ($process in $processes) {
+        try {
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            Write-Host "[ SUCCESS ] Process '$($process.Name)' (PID: $($process.Id)) closed successfully." -ForegroundColor Green
+        } catch {
+            Write-Host "[ WARNING ] Failed to close process '$($process.Name)' (PID: $($process.Id))." -ForegroundColor Yellow
+        }
+    }
+}
+
+# Espera adicional para garantir que todos os processos sejam fechados completamente
+Start-Sleep -Seconds 5
+
+# Verificação se o processo ainda está ativo após tentativa de encerramento
+$stillRunning = Get-Process | Where-Object { $_.ProcessName -like "SteelSeries*" }
+if ($stillRunning) {
+    Write-Host "[ ERROR ] Some SteelSeries GG processes are still running. Update cannot proceed." -ForegroundColor Red
+    exit
+} else {
+    Write-Host "[ SUCCESS ] All SteelSeries GG processes have been closed successfully." -ForegroundColor Green
+}
+
+$projectRoot = (Get-Item "$PSScriptRoot\..\..").FullName
+$configPath = Join-Path $projectRoot "config.json"
+
+if (!(Test-Path $configPath)) {
+    Write-Host "`n[ ERROR ] Configuration file not found." -ForegroundColor Red
     exit
 }
 
-# Caminhos
-$networkConfig = "\\192.168.15.204\pcs\SteelSeries\GG"
-$localConfig = "C:\ProgramData\SteelSeries\GG"
+$config = Get-Content $configPath | ConvertFrom-Json
+$networkFolder = $config.steelseries.networkFolder
+$destinationFolder = $config.steelseries.destinationFolder
 
-Write-Host "`n[ INFO ] Iniciando cópia das configurações do SteelSeries GG..." -ForegroundColor Cyan
-
-# Verifica se a pasta da rede existe
-if (!(Test-Path $networkConfig)) {
-    Write-Host "[ ❌ ERROR ] Pasta de configuração na rede não encontrada: $networkConfig" -ForegroundColor Red
+Write-Host "`n[ INFO ] Checking network folder..." -ForegroundColor Cyan
+if (!(Test-Path $networkFolder)) {
+    Write-Host "[ ERROR ] Network folder not found." -ForegroundColor Red
     exit
 }
 
-# Encerra todos os processos relacionados ao SteelSeries para evitar bloqueio de arquivos
-Write-Host "`n[ INFO ] Encerrando processos do SteelSeries (se existirem)..." -ForegroundColor Yellow
-$processList = Get-Process | Where-Object { $_.Name -like "*steel*" }
-foreach ($proc in $processList) {
+Write-Host "[ SUCCESS ] Network folder located. Proceeding with update." -ForegroundColor Green
+
+if (Test-Path $destinationFolder) {
+    Write-Host "`n[ INFO ] Deleting old folder..." -ForegroundColor Yellow
     try {
-        Stop-Process -Id $proc.Id -Force -ErrorAction Stop
-        Write-Host "[ OK ] Processo $($proc.Name) encerrado." -ForegroundColor Green
+        Remove-Item -Path $destinationFolder -Recurse -Force
+        Write-Host "[ SUCCESS ] Old folder removed." -ForegroundColor Green
     } catch {
-        Write-Host "[ INFO ] Não foi possível encerrar $($proc.Name). Pode não estar rodando." -ForegroundColor Gray
+        Write-Host "[ ERROR ] Failed to remove the folder. It might still be in use." -ForegroundColor Red
+        exit
     }
 }
 
-# Remove a pasta local (se existir)
-Write-Host "`n[ INFO ] Limpando configurações locais do SteelSeries GG..." -ForegroundColor Cyan
+Write-Host "`n[ INFO ] Copying network folder to local destination..." -ForegroundColor Cyan
 try {
-    if (Test-Path $localConfig) {
-        Remove-Item -Path $localConfig -Recurse -Force -ErrorAction Stop
-        Write-Host "[ OK ] Configurações locais removidas." -ForegroundColor Green
-    } else {
-        Write-Host "[ INFO ] Nenhuma configuração local encontrada para remover." -ForegroundColor Gray
-    }
+    Copy-Item -Path $networkFolder -Destination $destinationFolder -Recurse -Force
+    Write-Host "[ SUCCESS ] Copy operation completed successfully." -ForegroundColor Green
 } catch {
-    Write-Host "[ ⚠️ WARNING ] Não foi possível remover completamente: $($_.Exception.Message)" -ForegroundColor Yellow
-}
-
-# Cria a pasta local se não existir
-if (!(Test-Path $localConfig)) {
-    New-Item -ItemType Directory -Path $localConfig | Out-Null
-}
-
-# Copia da rede para local
-Write-Host "`n[ INFO ] Copiando configurações da rede para: $localConfig..." -ForegroundColor Cyan
-try {
-    Copy-Item -Path "$networkConfig\*" -Destination $localConfig -Recurse -Force -ErrorAction Stop
-    Write-Host "[ ✅ SUCCESS ] Configurações atualizadas com sucesso." -ForegroundColor Green
-} catch {
-    Write-Host "[ ❌ ERROR ] Erro ao copiar configurações: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "[ ERROR ] Failed to copy the folder." -ForegroundColor Red
     exit
 }
 
 Write-Host "===============================================================================" -ForegroundColor Yellow
-Write-Host "[ ✅ FINALIZADO ] Atualização das configurações do SteelSeries GG concluída com sucesso!" -ForegroundColor Green
+Write-Host "[ SUCCESS ] Update process completed successfully!" -ForegroundColor Green
 Write-Host "===============================================================================" -ForegroundColor Yellow

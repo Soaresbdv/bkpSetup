@@ -8,11 +8,11 @@ if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 }
 
 # Caminho de origem na rede
-$networkInstaller = "\\192.168.15.204\pcs\SteelSeries\SteelSeriesGG86.0.0Setup.exe"
+$networkInstaller = "\\192.168.15.204\pcs\SteelSeries\SteelSeriesGG88.0.0Setup.exe" # Sempre atualizar, de acordo com versão mais recente.
 
 # Caminho para a pasta Downloads do usuário logado
 $downloadsPath = [Environment]::GetFolderPath("MyDocuments").Replace("Documents", "Downloads")
-$localInstaller = Join-Path $downloadsPath "SteelSeriesGG86.0.0Setup.exe"
+$localInstaller = Join-Path $downloadsPath "SteelSeriesGG88.0.0Setup.exe"
 
 Write-Host "`n[ INFO ] Copiando instalador para a pasta Downloads..." -ForegroundColor Cyan
 
