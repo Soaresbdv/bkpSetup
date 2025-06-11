@@ -18,7 +18,7 @@
     },
     "steelseries": {
         "installerPath": "\\\\192.168.15.204\\pcs\\SteelSeries\\SteelSeriesGG83.1.0Setup.exe",
-        "networkFolder": "\\\\192.168.15.204\\pcs\\SteelSeries\\GG",
+        "networkFolder": "\\\\192.168.15.204\\pcs\\SteelSeries\\ProgramData\\GG",
         "destinationFolder": "C:\\ProgramData\\SteelSeries\\GG",
         "executablePath": "C:\\Program Files\\SteelSeries\\GG\\SteelSeriesGGClient.exe"
     },

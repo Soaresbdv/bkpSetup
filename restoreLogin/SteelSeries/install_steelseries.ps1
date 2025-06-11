@@ -1,39 +1,30 @@
-Write-Host "`n=======================[ Instalação SteelSeries GG ]=======================" -ForegroundColor Yellow
+# Caminho do instalador
+$installerName = "SteelSeriesGG88.0.0Setup.exe"
+$downloadsPath = "$env:USERPROFILE\Downloads"
+$installerPath = Join-Path $downloadsPath $installerName
 
-# Verificar se está rodando como administrador
-if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
-    Write-Host "`n[ INFO ] Executando como administrador..." -ForegroundColor Yellow
-    Start-Process powershell.exe -ArgumentList "-ExecutionPolicy Bypass -File `"$PSCommandPath`"" -Verb RunAs
+# Função para verificar se o SteelSeries está instalado (simplesmente verifica processo ativo)
+function Is-SteelSeriesInstalled {
+    return (Get-Process -Name "SteelSeriesGG" -ErrorAction SilentlyContinue) -ne $null
+}
+
+# Se já estiver instalado, sai sem fazer nada
+if (Is-SteelSeriesInstalled) {
+    Write-Host "SteelSeries já está instalado. Encerrando script."
     exit
 }
 
-# Caminho de origem na rede
-$networkInstaller = "\\192.168.15.204\pcs\SteelSeries\SteelSeriesGG88.0.0Setup.exe" # Sempre atualizar, de acordo com versão mais recente.
-
-# Caminho para a pasta Downloads do usuário logado
-$downloadsPath = [Environment]::GetFolderPath("MyDocuments").Replace("Documents", "Downloads")
-$localInstaller = Join-Path $downloadsPath "SteelSeriesGG88.0.0Setup.exe"
-
-Write-Host "`n[ INFO ] Copiando instalador para a pasta Downloads..." -ForegroundColor Cyan
-
-try {
-    Copy-Item -Path $networkInstaller -Destination $localInstaller -Force
-    Write-Host "[ ✅ SUCCESS ] Instalador copiado para: $localInstaller" -ForegroundColor Green
-} catch {
-    Write-Host "[ ❌ ERROR ] Erro ao copiar o instalador da rede." -ForegroundColor Red
-    exit
+# Verifica se o instalador já está na pasta Downloads
+if (!(Test-Path -Path $installerPath)) {
+    # O instalador não está em Downloads, então copia (assumindo que o original esteja junto ao script)
+    $sourcePath = Join-Path $PSScriptRoot $installerName
+    if (Test-Path -Path $sourcePath) {
+        Copy-Item -Path $sourcePath -Destination $downloadsPath
+    } else {
+        Write-Host "Arquivo de instalação não encontrado no diretório do script."
+        exit
+    }
 }
 
-# Executar o instalador
-Write-Host "`n[ INFO ] Executando instalador..." -ForegroundColor Cyan
-try {
-    Start-Process -FilePath $localInstaller -Wait -Verb RunAs
-    Write-Host "[ ✅ SUCCESS ] Instalação concluída com sucesso." -ForegroundColor Green
-} catch {
-    Write-Host "[ ❌ ERROR ] Erro ao executar o instalador." -ForegroundColor Red
-    exit
-}
-
-Write-Host "===============================================================================" -ForegroundColor Yellow
-Write-Host "[ ✅ FINALIZADO ] Processo de instalação do SteelSeries GG concluído com sucesso!" -ForegroundColor Green
-Write-Host "===============================================================================" -ForegroundColor Yellow
+# Executa o instalador silenciosamente, sem mostrar janela do PowerShell
+Start-Process -FilePath $installerPath -ArgumentList "/S" -WindowStyle Hidden
