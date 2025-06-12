@@ -1,30 +1,29 @@
-# Caminho do instalador
-$installerName = "SteelSeriesGG88.0.0Setup.exe"
-$downloadsPath = "$env:USERPROFILE\Downloads"
-$installerPath = Join-Path $downloadsPath $installerName
+# Caminho fixo do instalador na rede
+$installerPath = "\\192.168.15.204\pcs\SteelSeries\SteelSeriesGG88.0.0Setup.exe"
 
-# Função para verificar se o SteelSeries está instalado (simplesmente verifica processo ativo)
+# Função para verificar se o SteelSeries já está em execução (indicando que está instalado)
 function Is-SteelSeriesInstalled {
     return (Get-Process -Name "SteelSeriesGG" -ErrorAction SilentlyContinue) -ne $null
 }
 
 # Se já estiver instalado, sai sem fazer nada
 if (Is-SteelSeriesInstalled) {
-    Write-Host "SteelSeries já está instalado. Encerrando script."
+    Write-Host "✅ SteelSeries já está instalado. Encerrando script."
     exit
 }
 
-# Verifica se o instalador já está na pasta Downloads
+# Verifica se o instalador existe no caminho de rede
 if (!(Test-Path -Path $installerPath)) {
-    # O instalador não está em Downloads, então copia (assumindo que o original esteja junto ao script)
-    $sourcePath = Join-Path $PSScriptRoot $installerName
-    if (Test-Path -Path $sourcePath) {
-        Copy-Item -Path $sourcePath -Destination $downloadsPath
-    } else {
-        Write-Host "Arquivo de instalação não encontrado no diretório do script."
-        exit
-    }
+    Write-Host "❌ Instalador não encontrado em: $installerPath"
+    exit
 }
 
-# Executa o instalador silenciosamente, sem mostrar janela do PowerShell
-Start-Process -FilePath $installerPath -ArgumentList "/S" -WindowStyle Hidden
+# Copia o instalador para a pasta Downloads local
+$downloadsPath = "$env:USERPROFILE\Downloads"
+$localInstaller = Join-Path $downloadsPath ([System.IO.Path]::GetFileName($installerPath))
+Copy-Item -Path $installerPath -Destination $localInstaller -Force
+
+# Executa o instalador em modo silencioso
+Write-Host "🚀 Iniciando instalação do SteelSeries GG..."
+Start-Process -FilePath $localInstaller -ArgumentList "/S" -WindowStyle Hidden -Wait
+Write-Host "✅ Instalação finalizada."
